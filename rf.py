@@ -202,7 +202,7 @@ class RF(object):
 		self.w_in = np.random.uniform(low=-self.fac_w, high=self.fac_w, size= (self.Dr, self.Dx))
 		self.b_in = np.random.uniform(low=-self.fac_b, high=self.fac_b, size= (self.Dr, 1))
 
-		self.f_phi = lambda x: np.tanh(self.w_in @ x + self.b_in)
+		self.f_phi = lambda x: np.cos(self.w_in @ x + self.b_in)
 		self.f_phi_list = [self.f_phi_listmaker(i) for i in range(self.Dr)]
 		self.plot_rf(self.f_phi_list, nm='rf_functions')
 
@@ -214,21 +214,26 @@ class RF(object):
 		# self.plot_sorf(nm='sorf')
 
 	def f_phi_listmaker(self, i):
-		return lambda x: np.tanh(self.w_in[i] * x + self.b_in[i])
+		return lambda x: np.cos(self.w_in[i] * x + self.b_in[i])
 
 	def f_0_listmaker(self, f0_str):
 		return lambda x: eval(f0_str)
 
-	def set_rf_orth(self):
+	def set_rf_orth(self, ollie=True):
 		# set library functions
 		self.f_lib_list = [self.f_0_listmaker(f0_str) for f0_str in self.lib_list]
 		self.f_orth_list = [self.f_0_listmaker(f0_str) for f0_str in self.orth_list]
 
-		f_list_gs = self.f_orth_list + self.f_phi_list
-		f_orth_list = self.gram_schmidt(f_list_gs)
-		self.f_phi_orth_list = f_orth_list[self.orth_len:] # don't include f0 in the list
+		if ollie:
+			self.f_phi_orth_list = self.gram_schmidt_ollie(orth_list=self.f_orth_list, rf_list=self.f_phi_list)
+		else:
+			f_list_gs = self.f_orth_list + self.f_phi_list
+			f_orth_list = self.gram_schmidt(f_list_gs)
+			self.f_phi_orth_list = f_orth_list[self.orth_len:] # don't include f0 in the list
+
 		self.Dr_orth = len(self.f_phi_orth_list)
 		self.plot_rf(self.f_phi_orth_list, nm='rf_orth_functions')
+
 
 	def f0(self, x):
 		return eval(self.f0_str)
@@ -238,10 +243,7 @@ class RF(object):
 
 	def ip(self, u, v):
 		'''compute euclidean innerproduct of u, v on interval (self.x_min_grid, self.x_max_grid)'''
-		# foo = 0
-		# for x in self.x_grid:
-		# 	foo += self.grid_step*u(x)*v(x)
-		foo_int, err_int = quad(func = lambda x: u(x)*v(x), a=self.x_min_grid, b=self.x_max_grid, limit=500)
+		foo_int, err_int = quad(func = lambda x: u(x)*v(x), a=self.x_min_grid, b=self.x_max_grid, limit=5000)
 		return foo_int
 
 	def compute_alpha(self, u, v):
@@ -286,6 +288,31 @@ class RF(object):
 				# print('did not meet zero_threshold!')
 		return f_orth_list
 
+	def gram_schmidt_ollie(self, orth_list, rf_list):
+		'''run gram-schmidt orthogonalization FIRST on library functions.
+		THEN, on each random feature individually wrt the orthogonal library.
+		see wikipedia for pseudo-code: https://en.wikipedia.org/wiki/Gram–Schmidt_process.'''
+
+		# first get orthogonal versions of orth_list
+		orth_list = self.gram_schmidt(orth_list)
+
+		# now, loop over phi's
+		rf_list_orth = []
+
+		for rf in tqdm(rf_list):
+			for ui in orth_list:
+				unorm = 1
+				# unorm = self.ip(ui,ui) # it is already 1 from previous run of gram_scmidt above!!!
+				alpha = self.ip(ui, rf) / unorm
+				rf = self.f_update(f=rf, alpha=alpha, u=ui)
+
+			rf_sq_norm = self.ip(rf, rf)
+			rf = self.f_normalize(f=rf, nrm=np.sqrt(rf_sq_norm))
+
+			if rf_sq_norm > self.zero_thresh: # only keep functions that arent close to zero.
+				rf_list_orth += [rf]
+
+		return rf_list_orth
 
 	def scaleX(self, x, save=False):
 		if self.do_normalization:

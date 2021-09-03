@@ -1,4 +1,5 @@
 import os
+import numpy as np
 from rf import RF
 
 LEG = ['1',
@@ -19,9 +20,9 @@ lam_rf = 0 # regularization (L2) on the random feature function
 zero_thresh = 1e-6 # inner-product threshold for discarding nearly-zero orthogonal features in Gram-Schmidt
 
 # hyperparameters for variance of random feature function parameters w,b: tanh(wx + b)
-Dr = 20 # number of random features
+Dr = 200 # number of random features
 fac_w = 10
-fac_b = 0.1
+fac_b = 2*np.pi
 
 # coarsely sample data from the target function
 data_step = 0.1
