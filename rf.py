@@ -37,6 +37,7 @@ class RF(object):
 					lib_list = ['1', 'x', 'x**2'],
 					orth_list = LEG[:2],
 					fdag_str = ' + '.join(LEG[:5]),
+					Dx = 1,
 					Dr = 20,
 					fac_w = 2,
 					fac_b = 2,
@@ -81,13 +82,17 @@ class RF(object):
 		self.data_step = data_step
 		self.data_grid = data_grid
 		self.grid_step = grid_step
-		self.Dx = 1
+		self.Dx = Dx
 		self.Dy = 1
 		self.Dr = Dr
 		self.zero_thresh = zero_thresh
 		self.do_normalization = do_normalization
 
-		self.make_mesh()
+		self.integration_ranges = [(self.x_min_grid,self.x_max_grid) for _ in range(self.Dx)]
+
+		if self.Dx==1:
+			self.make_mesh()
+
 		self.make_data()
 
 		self.Nx = self.x.shape[1]
@@ -103,11 +108,14 @@ class RF(object):
 		self.print_eval()
 
 	def make_data(self):
-		if self.data_grid is None:
-			self.x = np.arange(start=self.x_min, stop=self.x_max, step=self.data_step) # input
+		if self.Dx==2:
+			self.x = np.mgrid[self.x_min:self.x_max:self.data_step, self.x_min:self.x_max:self.data_step].reshape(2,-1)
 		else:
-			self.x = self.data_grid
-		self.x = self.x[None,:]
+			if self.data_grid is None:
+				self.x = np.arange(start=self.x_min, stop=self.x_max, step=self.data_step) # input
+			else:
+				self.x = self.data_grid
+			self.x = self.x[None,:]
 		self.y = self.fdag(self.x) # output
 
 	def make_mesh(self):
@@ -204,7 +212,10 @@ class RF(object):
 
 		self.f_phi = lambda x: np.cos(self.w_in @ x + self.b_in)
 		self.f_phi_list = [self.f_phi_listmaker(i) for i in range(self.Dr)]
-		self.plot_rf(self.f_phi_list, nm='rf_functions')
+		try:
+			self.plot_rf(self.f_phi_list, nm='rf_functions')
+		except:
+			print('Couldnt plot RF')
 
 		# get SORF stuff (not using yet)
 		# self.transformer_sorf = StructuredOrthogonalRandomFeature(n_components=self.Dr, gamma=10,
@@ -394,6 +405,16 @@ class RF(object):
 			ax.plot(self.x_grid, array[c,:], label='f_{}'.format(c))
 		ax.legend()
 		plt.savefig(os.path.join(self.fig_path, nm))
+
+def nquad_wrapper(func, ranges, args=None, opts=None, full_output=False):
+
+	def myFunc(*argv):
+		x = np.asarray(argv)
+		foo = func(x)
+		return np.asarray(foo)
+
+	result, abs_err = nquad(myFunc, ranges=ranges, args=args, opts=opts, full_output=full_output)
+	return result, abs_err
 
 
 class CVOPT(object):
