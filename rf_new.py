@@ -96,8 +96,8 @@ class RF(object):
 
 		self.integration_ranges = [(self.x_min_grid,self.x_max_grid) for _ in range(self.Dx)]
 
-		if self.Dx==1:
-			self.make_mesh()
+		self.make_mesh()
+
 
 		self.make_data()
 
@@ -116,6 +116,8 @@ class RF(object):
 	def make_data(self):
 		if self.Dx==2:
 			self.x = np.mgrid[self.x_min:self.x_max:self.data_step, self.x_min:self.x_max:self.data_step].reshape(2,-1)
+		elif self.Dx==3:
+			self.x = np.mgrid[self.x_min:self.x_max:self.data_step, self.x_min:self.x_max:self.data_step, self.x_min:self.x_max:self.data_step].reshape(3,-1)
 		else:
 			if self.data_grid is None:
 				self.x = np.arange(start=self.x_min, stop=self.x_max, step=self.data_step) # input
@@ -125,8 +127,16 @@ class RF(object):
 		self.y = self.fdag(self.x.T).T # output
 
 	def make_mesh(self):
-		self.x_grid = np.arange(start=self.x_min_grid, stop=self.x_max_grid, step=self.grid_step) # input
-		self.x_grid = self.x_grid[:,None]
+		if self.Dx==1:
+			self.x_grid = np.arange(start=self.x_min_grid, stop=self.x_max_grid, step=self.grid_step) # input
+			self.x_grid = self.x_grid[:,None]
+		elif self.Dx==2:
+			x = np.arange(start=self.x_min_grid, stop=self.x_max_grid, step=self.grid_step)
+			y = np.arange(start=self.x_min_grid, stop=self.x_max_grid, step=self.grid_step)
+			self.X_grid, self.Y_grid = X, Y = np.meshgrid(x,y)
+			self.XY_grid = np.array([X.flatten(),Y.flatten()]).T
+		else:
+			print('Cant make mesh for larger than 2-d')
 
 	def normalize_data(self):
 		self.x_norm = self.scaleX(self.x, save=True)
@@ -134,16 +144,16 @@ class RF(object):
 
 	def fit_data(self, use_cvx=True):
 		self.set_rf()
-
-		### Compute libraries
-		Phi = self.Phi_lib(self.x_norm.T).T
-
 		self.set_rf_orth()
 
+		### Compute libraries
+		print('Computing Phi matrices...')
+		Phi = self.Phi_lib(self.x_norm.T).T
 		Phi_lib = self.F_lib(self.x_norm.T).T
 		Phi_orth = self.Phi_orth_lib(self.x_norm.T).T
 
 		### Library regression
+		print('Running regressions...')
 		if use_cvx:
 			# L1
 			cv = CVOPT()
@@ -203,6 +213,11 @@ class RF(object):
 		foo = ['{:.3e} {}'.format(C_lib[0,k], self.lib_list_str[k]) for k in range(self.Dl)]
 		self.regression_string_joint = ' + '.join(foo)
 
+	def f_j(self, j, x_input):
+		return self.lib_list[j](x_input)
+
+	def f_orth_j(self, j, x_input):
+		return self.lib_orth_list[j](x_input)
 
 	def phi_j(self, j, x_input):
 		# x_input: N x Dx
@@ -217,7 +232,6 @@ class RF(object):
 
 		# compute random feature
 		foo = np.cos(x_input @ Wj + bj)
-
 		return foo
 
 	def F_lib(self, x_input):
@@ -271,6 +285,7 @@ class RF(object):
 		self.alpha_proj = np.zeros((self.Dr, self.Dl))
 		self.phi_orth_norm = np.ones(self.Dr)
 
+		print('Computing alphas')
 		for l in tqdm(range(self.Dl)):
 			fl = self.lib_orth_list[l]
 			fl_norm = self.norm(fl)
@@ -279,7 +294,8 @@ class RF(object):
 				self.alpha_proj[j,l] = alp / fl_norm**2
 
 		# next, we normalize the phi_orth_j
-		for j in range(self.Dr):
+		print('Normalizing Phi_orth...')
+		for j in tqdm(range(self.Dr)):
 			self.phi_orth_norm[j] = self.norm(lambda x: self.phi_orth_j(j, x))
 
 
@@ -289,9 +305,12 @@ class RF(object):
 
 		self.f_phi = lambda x: np.cos(self.w_in @ x + self.b_in)
 		self.f_phi_list = [self.f_phi_listmaker(i) for i in range(self.Dr)]
-		try:
-			self.plot_rf_new(self.x_grid, self.Phi_lib(self.x_grid), nm='rf_functions_new')
-		except:
+		if self.Dx==1:
+			self.plot_rf_d1(self.x_grid, self.Phi_lib(self.x_grid), nm='rf_functions')
+		elif self.Dx==2:
+			self.plot_rf_d2(f=self.phi_j, J=self.Dr, nm='rf_functions')
+			self.plot_rf_d2(f=self.f_j, J=self.Dl, nm='lib_functions')
+		else:
 			print('Couldnt plot RF')
 
 	def f_phi_listmaker(self, i):
@@ -301,11 +320,17 @@ class RF(object):
 		return lambda x: np.asarray(eval(f0_str)).reshape(-1)
 
 	def set_rf_orth(self, ollie=True):
+		print('Running GS on library...')
 		self.lib_orth_list = self.gram_schmidt(self.lib_list)
+
+		print('Getting projections of RFs wrt library...')
 		self.get_alpha_proj()
-		try:
-			self.plot_rf_new(self.x_grid, self.Phi_orth_lib(self.x_grid), nm='rf_orth_functions')
-		except:
+		if self.Dx==1:
+			self.plot_rf_d1(self.x_grid, self.Phi_orth_lib(self.x_grid), nm='rf_orth_functions')
+		elif self.Dx==2:
+			self.plot_rf_d2(f=self.f_orth_j, J=self.Dl, nm='lib_orth_functions')
+			self.plot_rf_d2(f=self.phi_orth_j, J=self.Dr, nm='rf_orth_functions')
+		else:
 			print('Couldnt plot RF')
 
 	def ip(self, u, v):
@@ -411,6 +436,7 @@ class RF(object):
 		ax[1].set_xlabel('x')
 		ax[1].legend()
 		plt.savefig(os.path.join(self.fig_path, 'fits'))
+		plt.close()
 
 	def print_eval(self):
 		print("True function:", self.fdag_str)
@@ -424,14 +450,22 @@ class RF(object):
 		print("Joint Lib + RF-Orth MSE= {:.1e}".format(np.mean((self.y - self.y_fit_joint_orth)**2)),)
 		print("Lib-Only MSE = {:.3e}".format(np.mean((self.y - self.y_fit_lib_only)**2)))
 
-	def plot_rf_new(self, x,  Phi, nm='RF_functions'):
+	def plot_rf_d1(self, x,  Phi, nm='RF_functions'):
 		fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,6))
-		c = -1
 		N, D = Phi.shape
 		for d in range(D):
 			ax.plot(x, Phi[:,d], label='f_{}'.format(d))
 		ax.legend()
 		plt.savefig(os.path.join(self.fig_path, nm))
+		plt.close()
+
+	def plot_rf_d2(self, f, J, nm='RF_functions'):
+		for j in range(min(J,10)):
+			Phi = f(j, self.XY_grid)
+			fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,6))
+			ax.scatter(x=self.XY_grid[:,0], y=self.XY_grid[:,1], c=Phi)
+			plt.savefig(os.path.join(self.fig_path, nm+str(j)))
+			plt.close()
 
 class CVOPT(object):
 	def __init__(self):
