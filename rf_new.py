@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 matplotlib.use("Agg")
 import pickle
+import warnings
 
 from sklearn.linear_model import LinearRegression
 
@@ -38,6 +39,9 @@ class RF(object):
 					lib_list,
 					lib_list_str = ['1', 'x', 'x**2'],
 					fdag_str = ' + '.join(LEG[:5]),
+					integration_ranges=None,
+					x_input = None,
+					y = None,
 					Dx = 1,
 					Dr = 20,
 					fac_w = 2,
@@ -94,19 +98,24 @@ class RF(object):
 		self.zero_thresh = zero_thresh
 		self.do_normalization = do_normalization
 
-		self.integration_ranges = [(self.x_min_grid,self.x_max_grid) for _ in range(self.Dx)]
+		if integration_ranges is None:
+			integration_ranges = [(self.x_min_grid,self.x_max_grid) for _ in range(self.Dx)]
+		self.integration_ranges = integration_ranges
 
 		self.make_mesh()
 
-
-		self.make_data()
+		if x_input is None or y is None:
+			self.make_data()
+		else:
+			self.x = x_input
+			self.y = y
 
 		self.Nx = self.x.shape[1]
 		self.lambda_reg_lib = lam_lib * self.Nx / (self.Dy)
 		self.lambda_reg_rf = lam_rf * self.Nx / (self.Dy)
 
 	def run(self):
-		self.make_data()
+		# self.make_data()
 		self.normalize_data()
 		self.fit_data()
 		self.plot_fits()
@@ -142,15 +151,21 @@ class RF(object):
 		self.x_norm = self.scaleX(self.x, save=True)
 		self.y_norm = self.scaleY(self.y, save=True)
 
-	def fit_data(self, use_cvx=True):
+	def fit_data(self, use_cvx=False):
 		self.set_rf()
-		self.set_rf_orth()
 
 		### Compute libraries
-		print('Computing Phi matrices...')
+		print('Computing Phi and Library matrices...')
 		Phi = self.Phi_lib(self.x_norm.T).T
+		self.plot_rf_seq(Phi.T[:500], nm='rf_seq')
+
 		Phi_lib = self.F_lib(self.x_norm.T).T
+		self.plot_rf_seq(Phi_lib.T[:500], nm='lib_seq')
+
+		self.set_rf_orth()
+		print('Computing Phi-orth matrix...')
 		Phi_orth = self.Phi_orth_lib(self.x_norm.T).T
+		self.plot_rf_seq(Phi_orth.T[:500], nm='rf_orth_seq')
 
 		### Library regression
 		print('Running regressions...')
@@ -180,21 +195,29 @@ class RF(object):
 		y_pred_scaled = C @ Phi
 		self.y_fit_rf_only = self.descaleY(y_pred_scaled)
 
-		### Fit whole function with RF-ORTHOGONAL (just for testing stuff)
-		if use_cvx:
-			cv = CVOPT()
-			C = cv.run_ridge(X=Phi_orth, Y=self.y_norm, lambd=self.lambda_reg_rf)
-		else:
-			C = self.y_norm @ Phi_orth.T @ scipypinv2(Phi_orth@Phi_orth.T + self.lambda_reg_rf * np.eye(self.Dr))
-		#aggregate
-		y_pred_scaled = C @ Phi_orth
+		# ### Fit whole function with RF-ORTHOGONAL (just for testing stuff)
+		# if use_cvx:
+		# 	cv = CVOPT()
+		# 	C = cv.run_ridge(X=Phi_orth, Y=self.y_norm, lambd=self.lambda_reg_rf)
+		# else:
+		# 	C = self.y_norm @ Phi_orth.T @ scipypinv2(Phi_orth@Phi_orth.T + self.lambda_reg_rf * np.eye(self.Dr))
+		# #aggregate
+		# y_pred_scaled = C @ Phi_orth
 		self.y_fit_rf_orth_only = self.descaleY(y_pred_scaled)
 
 
 		### joint: L1-Lib + L2-OrthRF learning
 		if Phi_orth.shape[0]>0:
-			cv = CVOPT()
-			C_lib, C_orth = cv.run_mixed(X1=Phi_lib, X2=Phi_orth, Y=self.y_norm, lambd_1=self.lambda_reg_lib, lambd_2=self.lambda_reg_rf)
+			if use_cvx:
+				cv = CVOPT()
+				C_lib, C_orth = cv.run_mixed(X1=Phi_lib, X2=Phi_orth, Y=self.y_norm, lambd_1=self.lambda_reg_lib, lambd_2=self.lambda_reg_rf)
+			else:
+				warnings.warn("regularization not supported here for joint learning without CVX")
+				Phi_all = np.vstack((Phi_lib, Phi_orth))
+				C_all = self.y_norm @ Phi_all.T @ scipypinv2(Phi_all@Phi_all.T + self.lambda_reg_rf * np.eye(self.Dr + self.Dl))
+				C_lib = C_all[:,:self.Dl]
+				C_orth = C_all[:,self.Dl:]
+
 			y_pred_scaled = C_lib @ Phi_lib + C_orth @ Phi_orth
 			self.y_fit_joint_orth = self.descaleY(y_pred_scaled)
 			# create regression fit string
@@ -205,8 +228,15 @@ class RF(object):
 			self.regression_string_joint_orth = 'failed'
 
 		### joint: L1-Lib + L2-RF learning (non-orth)
-		cv = CVOPT()
-		C_lib, C_orth = cv.run_mixed(X1=Phi_lib, X2=Phi, Y=self.y_norm, lambd_1=self.lambda_reg_lib, lambd_2=self.lambda_reg_rf)
+		if use_cvx:
+			cv = CVOPT()
+			C_lib, C_orth = cv.run_mixed(X1=Phi_lib, X2=Phi, Y=self.y_norm, lambd_1=self.lambda_reg_lib, lambd_2=self.lambda_reg_rf)
+		else:
+			warnings.warn("regularization not supported here for joint learning without CVX")
+			Phi_all = np.vstack((Phi_lib, Phi))
+			C_all = self.y_norm @ Phi_all.T @ scipypinv2(Phi_all@Phi_all.T + self.lambda_reg_rf * np.eye(self.Dr + self.Dl))
+			C_lib = C_all[:,:self.Dl]
+			C_orth = C_all[:,self.Dl:]
 		y_pred_scaled = C_lib @ Phi_lib + C_orth @ Phi
 		self.y_fit_joint = self.descaleY(y_pred_scaled)
 		# create regression fit string
@@ -288,7 +318,7 @@ class RF(object):
 		print('Computing alphas')
 		for l in tqdm(range(self.Dl)):
 			fl = self.lib_orth_list[l]
-			fl_norm = self.norm(fl)
+			fl_norm = self.norm(fl) # this should be ~1 already, maybe remove this?
 			for j in range(self.Dr):
 				alp = self.ip(fl, lambda x: self.phi_j(j, x))
 				self.alpha_proj[j,l] = alp / fl_norm**2
@@ -458,6 +488,17 @@ class RF(object):
 		ax.legend()
 		plt.savefig(os.path.join(self.fig_path, nm))
 		plt.close()
+
+	def plot_rf_seq(self, Phi, nm='RF_seq_functions'):
+		fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,6))
+		N, D = Phi.shape
+		for d in range(min(10,D)):
+			ax.plot(Phi[:,d], label='f_{}'.format(d))
+			plt.savefig(os.path.join(self.fig_path, nm))
+		ax.legend()
+		plt.savefig(os.path.join(self.fig_path, nm))
+		plt.close()
+
 
 	def plot_rf_d2(self, f, J, nm='RF_functions'):
 		for j in range(min(J,10)):
