@@ -1,0 +1,72 @@
+{
+  "Euler": {
+            "method": "Euler",
+            "dt_frac": 1
+          },
+  "RK23default": {
+            "method": "RK23"
+          },
+  "DOP853default": {
+            "method": "DOP853"
+          },
+  "default": {
+            "method": "RK45",
+            "rtol": 1e-3,
+            "atol": 1e-6,
+            "max_step": 1
+          },
+  "defaultPlus": {
+            "method": "RK45",
+            "rtol": 1e-3,
+            "atol": 1e-6,
+            "max_step": 0.001
+          },
+  "lowfi": {
+            "method": "RK45",
+            "rtol": 1e-4,
+            "atol": 1e-4,
+            "max_step": 1
+          },
+  "lowfiPlus": {
+            "method": "RK45",
+            "rtol": 1e-4,
+            "atol": 1e-4,
+            "max_step": 0.001
+          },
+  "medfi": {
+            "method": "RK45",
+            "rtol": 1e-5,
+            "atol": 1e-5,
+            "max_step": 1
+          },
+  "medfiPlus": {
+            "method": "RK45",
+            "rtol": 1e-5,
+            "atol": 1e-5,
+            "max_step": 0.001
+          },
+  "hifi": {
+            "method": "RK45",
+            "rtol": 1e-6,
+            "atol": 1e-6,
+            "max_step": 1
+          },
+  "hifiPlus": {
+          "method": "RK45",
+          "rtol": 1e-6,
+          "atol": 1e-6,
+          "max_step": 0.001
+        },
+  "superhifi": {
+            "method": "RK45",
+            "rtol": 1e-9,
+            "atol": 1e-9,
+            "max_step": 1
+          },
+  "superhifiPlus": {
+          "method": "RK45",
+          "rtol": 1e-9,
+          "atol": 1e-9,
+          "max_step": 0.001
+        }
+}
