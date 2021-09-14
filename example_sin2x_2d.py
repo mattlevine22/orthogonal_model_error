@@ -3,7 +3,7 @@ import numpy as np
 from rf_new import RF
 from pdb import set_trace as bp
 
-fig_path = 'outputs/example_2d_new'
+fig_path = 'outputs/example_sin2x_2d'
 
 # This is for x 2D
 Dx = 2 # input dimension
