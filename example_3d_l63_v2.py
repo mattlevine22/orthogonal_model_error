@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from rf_new import RF
+from rf import RF
 from pdb import set_trace as bp
 from odelibrary import L63
 
