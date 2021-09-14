@@ -1,9 +1,9 @@
 import os
 import numpy as np
-from rf_new import RF
+from rf import RF
 from pdb import set_trace as bp
 
-fig_path = 'outputs/example_sin2x_new'
+fig_path = 'outputs/example_sin2x_1d'
 
 Dx = 1 # input dimension
 
