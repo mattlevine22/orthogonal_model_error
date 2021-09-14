@@ -36,18 +36,20 @@ LEG = ['1',
 class RF(object):
 	def __init__(self,
 					fdag,
-					lib_list,
-					lib_list_str = ['1', 'x', 'x**2'],
-					fdag_str = ' + '.join(LEG[:5]),
+					lib_list=[],
+					lib_list_str = [],
+					fdag_str = '',
 					integration_ranges=None,
 					x_input = None,
 					y = None,
+					activation = np.cos,
 					Dx = 1,
 					Dr = 20,
 					fac_w = 2,
 					fac_b = 2,
 					x_min = -1,
 					x_max = 1,
+					integration_style= 'quad',
 					data_grid = None,
 					data_step = 0.01,
 					grid_step = 1e-2,
@@ -80,6 +82,10 @@ class RF(object):
 		self.lib_list_str = lib_list_str
 		# self.lib_len = len(self.lib_list)
 
+		self.set_strings()
+
+		self.integration_style = integration_style
+		self.activation = activation
 		self.fdag_str = fdag_str
 		self.fdag = fdag
 		self.fac_w = fac_w
@@ -97,6 +103,7 @@ class RF(object):
 		self.Dl = len(self.orth_list)
 		self.zero_thresh = zero_thresh
 		self.do_normalization = do_normalization
+		self.debug = False
 
 		if integration_ranges is None:
 			integration_ranges = [(self.x_min_grid,self.x_max_grid) for _ in range(self.Dx)]
@@ -114,11 +121,19 @@ class RF(object):
 		self.lambda_reg_lib = lam_lib * self.Nx / (self.Dy)
 		self.lambda_reg_rf = lam_rf * self.Nx / (self.Dy)
 
+	def set_strings(self):
+		self.regression_string_lib_only = ''
+		self.regression_string_joint_orth = ''
+		self.regression_string_joint = ''
+
 	def run(self):
 		# self.make_data()
 		self.normalize_data()
 		self.fit_data()
-		self.plot_fits()
+		try:
+			self.plot_fits()
+		except:
+			pass
 
 		self.print_eval()
 
@@ -156,16 +171,43 @@ class RF(object):
 
 		### Compute libraries
 		print('Computing Phi and Library matrices...')
+		nplot = min(500, self.Nx)
 		Phi = self.Phi_lib(self.x_norm.T).T
-		self.plot_rf_seq(Phi.T[:500], nm='rf_seq')
+		self.plot_rf_seq(Phi.T[:nplot], nm='rf_seq')
 
+		try:
+			# these "truth" segments are specifically for inspecting L63 cases
+			truth = self.x_norm[0,:nplot]*self.x_norm[2,:nplot]
+			truth = truth.reshape(-1,1)
+			self.plot_rf_seq(truth, nm='truth_seq')
+		except:
+			pass
+
+		### Fit whole function with RF
+		if use_cvx:
+			cv = CVOPT()
+			C = cv.run_ridge(X=Phi, Y=self.y_norm, lambd=self.lambda_reg_rf)
+		else:
+			C = self.y_norm @ Phi.T @ scipypinv2(Phi@Phi.T + self.lambda_reg_rf * np.eye(self.Dr))
+		#aggregate
+		y_pred_scaled = C @ Phi
+		self.y_fit_rf_only = self.descaleY(y_pred_scaled)
+		self.plot_rf_seq((y_pred_scaled.T - self.y_norm.T)**2, nm='rfPred_sqerr_seq')
+		self.plot_rf_seq((y_pred_scaled.T - self.y_norm.T)/self.y_norm.T, nm='rfPred_relerr_seq')
+		self.plot_rf_seq(y_pred_scaled.T, nm='rfPred_seq')
+
+
+		if self.Dl == 0:
+			return
+
+		# use libraries
 		Phi_lib = self.F_lib(self.x_norm.T).T
-		self.plot_rf_seq(Phi_lib.T[:500], nm='lib_seq')
+		self.plot_rf_seq(Phi_lib.T[:nplot], nm='lib_seq')
 
 		self.set_rf_orth()
 		print('Computing Phi-orth matrix...')
 		Phi_orth = self.Phi_orth_lib(self.x_norm.T).T
-		self.plot_rf_seq(Phi_orth.T[:500], nm='rf_orth_seq')
+		self.plot_rf_seq(Phi_orth.T[:nplot], nm='rf_orth_seq')
 
 		### Library regression
 		print('Running regressions...')
@@ -185,15 +227,6 @@ class RF(object):
 		self.regression_string_lib_only = ' + '.join(foo)
 
 
-		### Fit whole function with RF
-		if use_cvx:
-			cv = CVOPT()
-			C = cv.run_ridge(X=Phi, Y=self.y_norm, lambd=self.lambda_reg_rf)
-		else:
-			C = self.y_norm @ Phi.T @ scipypinv2(Phi@Phi.T + self.lambda_reg_rf * np.eye(self.Dr))
-		#aggregate
-		y_pred_scaled = C @ Phi
-		self.y_fit_rf_only = self.descaleY(y_pred_scaled)
 
 		# ### Fit whole function with RF-ORTHOGONAL (just for testing stuff)
 		# if use_cvx:
@@ -243,6 +276,13 @@ class RF(object):
 		foo = ['{:.3e} {}'.format(C_lib[0,k], self.lib_list_str[k]) for k in range(self.Dl)]
 		self.regression_string_joint = ' + '.join(foo)
 
+	def xz(self, x_input):
+		# x_input: N x Dx
+		# output: N x 1
+		N = x_input.shape[0]
+		foo = x_input[:,0]*x_input[:,2]
+		return foo.reshape(N,1)
+
 	def f_j(self, j, x_input):
 		return self.lib_list[j](x_input)
 
@@ -261,7 +301,7 @@ class RF(object):
 		bj = self.b_in[j] * np.ones((N,1))
 
 		# compute random feature
-		foo = np.cos(x_input @ Wj + bj)
+		foo = self.activation(x_input @ Wj + bj)
 		return foo
 
 	def F_lib(self, x_input):
@@ -311,7 +351,6 @@ class RF(object):
 	def get_alpha_proj(self):
 		# produces alpha_proj: Dr x Dl
 		# phi_orth_norm: Dr
-
 		self.alpha_proj = np.zeros((self.Dr, self.Dl))
 		self.phi_orth_norm = np.ones(self.Dr)
 
@@ -330,10 +369,13 @@ class RF(object):
 
 
 	def set_rf(self):
+		# self.w_in = 1*np.random.randn(self.Dr, self.Dx)
+		# self.b_in = np.random.uniform(low=0, high=2*np.pi, size= (self.Dr, 1))
+
 		self.w_in = np.random.uniform(low=-self.fac_w, high=self.fac_w, size= (self.Dr, self.Dx))
 		self.b_in = np.random.uniform(low=-self.fac_b, high=self.fac_b, size= (self.Dr, 1))
 
-		self.f_phi = lambda x: np.cos(self.w_in @ x + self.b_in)
+		self.f_phi = lambda x: self.activation(self.w_in @ x + self.b_in)
 		self.f_phi_list = [self.f_phi_listmaker(i) for i in range(self.Dr)]
 		if self.Dx==1:
 			self.plot_rf_d1(self.x_grid, self.Phi_lib(self.x_grid), nm='rf_functions')
@@ -344,7 +386,7 @@ class RF(object):
 			print('Couldnt plot RF')
 
 	def f_phi_listmaker(self, i):
-		return lambda x: np.asarray(np.cos(self.w_in[i] @ x + self.b_in[i])).reshape(-1)
+		return lambda x: np.asarray(self.activation(self.w_in[i] @ x + self.b_in[i])).reshape(-1)
 
 	def f_0_listmaker(self, f0_str):
 		return lambda x: np.asarray(eval(f0_str)).reshape(-1)
@@ -368,13 +410,23 @@ class RF(object):
 		# foo_int, err_int = quad(func = lambda x: u(x)*v(x), a=self.x_min_grid, b=self.x_max_grid, limit=5000)
 
 		def myFunc(*argv):
+			if self.debug:
+				bp()
 			# input is x0, x1, x2...
 			# output is a float
 			x = np.asarray(argv).reshape(1,self.Dx)
 			foo = u(x)*v(x)
 			return np.float(foo)
 
-		foo_int, err_int = nquad(func = myFunc, ranges=self.integration_ranges, opts={'limit':500})
+		if self.integration_style=='quad':
+			foo_int, err_int = nquad(func = myFunc, ranges=self.integration_ranges, opts={'limit':500})
+		else:
+			# run MC estimation
+			rnd_inds = np.random.randint(self.Nx, size=1000)
+			foo_int = 0
+			for i in rnd_inds:
+				x = self.x_norm[None,:,i]
+				foo_int += u(x)*v(x)
 		return foo_int
 
 	def norm(self, u):
@@ -475,10 +527,13 @@ class RF(object):
 		print("Joint-Orth Library Regression :", self.regression_string_joint_orth)
 		print('\n')
 
-		print("RF-pure MSE = {:.1e}".format(np.mean((self.y - self.y_fit_rf_only)**2)))
-		print("Joint Lib + RF MSE = {:.1e}".format(np.mean((self.y - self.y_fit_joint)**2)),)
-		print("Joint Lib + RF-Orth MSE= {:.1e}".format(np.mean((self.y - self.y_fit_joint_orth)**2)),)
-		print("Lib-Only MSE = {:.3e}".format(np.mean((self.y - self.y_fit_lib_only)**2)))
+		try:
+			print("RF-pure MSE = {:.1e}".format(np.mean((self.y - self.y_fit_rf_only)**2)))
+			print("Joint Lib + RF MSE = {:.1e}".format(np.mean((self.y - self.y_fit_joint)**2)),)
+			print("Joint Lib + RF-Orth MSE= {:.1e}".format(np.mean((self.y - self.y_fit_joint_orth)**2)),)
+			print("Lib-Only MSE = {:.3e}".format(np.mean((self.y - self.y_fit_lib_only)**2)))
+		except:
+			pass
 
 	def plot_rf_d1(self, x,  Phi, nm='RF_functions'):
 		fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,6))
