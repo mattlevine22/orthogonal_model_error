@@ -45,8 +45,8 @@ lam_rf = 0 # regularization (L2) on the random feature function
 zero_thresh = 0 # inner-product threshold for discarding nearly-zero orthogonal features in Gram-Schmidt
 
 # hyperparameters for variance of random feature function parameters w,b: tanh(wx + b)
-Dr = 200 # number of random features
-fac_w = 10
+Dr = 20 # number of random features
+fac_w = 1
 fac_b = 2*np.pi
 
 # coarsely sample data from the target function

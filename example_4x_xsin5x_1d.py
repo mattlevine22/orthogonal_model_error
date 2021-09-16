@@ -3,7 +3,7 @@ import numpy as np
 from rf import RF
 from pdb import set_trace as bp
 
-fig_path = 'outputs/example_sin2x_1d'
+fig_path = 'outputs/example_4x_xsin5x_1d'
 
 Dx = 1 # input dimension
 
@@ -11,10 +11,10 @@ Dx = 1 # input dimension
 def fdag(x):
 	# x_input: N x Dx
 	# output: N x 1 (constant)
-	foo = np.sin(2*x)
+	foo = 4*x + x*np.sin(5*x)
 	foo = foo.reshape(-1,1)
 	return foo
-fdag_str = 'np.sin(2*x)' # target function
+fdag_str = '4x + x sin(5x)' # target function
 
 
 def I_i(x_input):
@@ -31,10 +31,10 @@ def X_i(x_input, i):
 	foo = x_input[:,i].reshape(N,1)
 	return foo
 
-lib_list = [I_i]
+lib_list = []
 lib_list += [lambda x: X_i(x, i) for i in range(Dx)]
 
-lib_list_str = ['1']
+lib_list_str = []
 lib_list_str += ['x_{}'.format(i) for i in range(Dx)]
 
 
@@ -55,7 +55,7 @@ data_step = 0.1
 x_min = 0
 x_max = 1
 
-print('Target is 2.1989e-01 1 + 9.7631e-01 x') # computed with standard OLS and data_step=0.0001
+print('Target is 3.565236 x') # computed with standard OLS and data_step=0.0001
 
 
 settings = {'lib_list': lib_list,

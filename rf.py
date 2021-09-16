@@ -372,11 +372,11 @@ class RF(object):
 
 
 	def set_rf(self):
-		# self.w_in = 1*np.random.randn(self.Dr, self.Dx)
-		# self.b_in = np.random.uniform(low=0, high=2*np.pi, size= (self.Dr, 1))
+		self.w_in = self.fac_w * np.random.randn(self.Dr, self.Dx)
+		self.b_in = np.random.uniform(low=0, high=2*np.pi, size= (self.Dr, 1))
 
-		self.w_in = np.random.uniform(low=-self.fac_w, high=self.fac_w, size= (self.Dr, self.Dx))
-		self.b_in = np.random.uniform(low=-self.fac_b, high=self.fac_b, size= (self.Dr, 1))
+		# self.w_in = np.random.uniform(low=-self.fac_w, high=self.fac_w, size= (self.Dr, self.Dx))
+		# self.b_in = np.random.uniform(low=-self.fac_b, high=self.fac_b, size= (self.Dr, 1))
 
 		self.f_phi = lambda x: self.activation(self.w_in @ x + self.b_in)
 		self.f_phi_list = [self.f_phi_listmaker(i) for i in range(self.Dr)]
