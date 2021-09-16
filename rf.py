@@ -40,6 +40,7 @@ class RF(object):
 					lib_list_str = [],
 					fdag_str = '',
 					integration_ranges=None,
+					normalize_phi=False,
 					x_input = None,
 					y = None,
 					activation = np.cos,
@@ -84,6 +85,7 @@ class RF(object):
 
 		self.set_strings()
 
+		self.normalize_phi = normalize_phi
 		self.integration_style = integration_style
 		self.activation = activation
 		self.fdag_str = fdag_str
@@ -363,9 +365,10 @@ class RF(object):
 				self.alpha_proj[j,l] = alp / fl_norm**2
 
 		# next, we normalize the phi_orth_j
-		print('Normalizing Phi_orth...')
-		for j in tqdm(range(self.Dr)):
-			self.phi_orth_norm[j] = self.norm(lambda x: self.phi_orth_j(j, x))
+		if self.normalize_phi: # this takes more time, BUT it can improve conditioning of learnt coefficient matrix C. so far, not necessary?
+			print('Normalizing Phi_orth...')
+			for j in tqdm(range(self.Dr)):
+				self.phi_orth_norm[j] = self.norm(lambda x: self.phi_orth_j(j, x))
 
 
 	def set_rf(self):
