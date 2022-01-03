@@ -1,27 +1,28 @@
 import os
 import numpy as np
-import cvxpy as cp
 from scipy.linalg import pinv2 as scipypinv2
 from scipy.integrate import quad, nquad
 # Plotting parameters
 import matplotlib
-from matplotlib import rc, cm, colors
 import matplotlib.pyplot as plt
-import seaborn as sns
 matplotlib.use("Agg")
-import pickle
-import warnings
-
-from sklearn.linear_model import LinearRegression
-
 import warnings
 from tqdm import tqdm
+
+try:
+	from sklearn.linear_model import LinearRegression
+except:
+	print('scikit-learn not loaded--default is to NOT use this package anyway, so dont worry.')
+
+try:
+	import cvxpy as cp
+except:
+	print('CVXPY not loaded--default is to NOT use this package anyway, so dont worry.')
 
 try:
 	from pyrfm import OrthogonalRandomFeature, StructuredOrthogonalRandomFeature
 except:
 	pass
-
 
 from pdb import set_trace as bp
 
